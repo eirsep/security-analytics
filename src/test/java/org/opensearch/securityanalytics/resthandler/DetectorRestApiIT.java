@@ -922,6 +922,7 @@ public class DetectorRestApiIT extends SecurityAnalyticsRestTestCase {
 
 
     public void testDeletingADetector_single_Monitor() throws IOException {
+        updateClusterSetting(ENABLE_WORKFLOW_USAGE.getKey(), "true");
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
         // Execute CreateMappingsAction to add alias mapping for index

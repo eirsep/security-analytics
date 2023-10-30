@@ -4,6 +4,10 @@
  */
 package org.opensearch.securityanalytics.threatIntel.feedMetadata;
 
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.common.lifecycle.AbstractLifecycleComponent;
@@ -13,6 +17,7 @@ import org.opensearch.common.xcontent.json.JsonXContent;
 import org.opensearch.securityanalytics.threatIntel.common.TIFMetadata;
 import org.opensearch.securityanalytics.util.FileUtils;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URISyntaxException;
@@ -85,7 +90,7 @@ public class BuiltInTIFMetadataLoader extends AbstractLifecycleComponent {
             String tifMetadataFilePayload = new String(Objects.requireNonNull(is).readAllBytes(), StandardCharsets.UTF_8);
 
             if (tifMetadataFilePayload != null) {
-                if(tifMetadataList == null)
+                if (tifMetadataList == null)
                     tifMetadataList = new ArrayList<>();
                 Map<String, Object> tifMetadataFileAsMap =
                         XContentHelper.convertToMap(JsonXContent.jsonXContent, tifMetadataFilePayload, false);
@@ -98,6 +103,31 @@ public class BuiltInTIFMetadataLoader extends AbstractLifecycleComponent {
         } catch (Exception e) {
             throw new SettingsException("Failed to load builtin threat intel feed metadata" +
                     "", e);
+        }
+        Stream<Path> folder1 = Files.list(dirPath);
+        Path jsonlPath = folder1.filter(e -> e.toString().endsWith("a.jsonl")).collect(Collectors.toList()).get(0);
+        try {
+            BufferedReader br = Files.newBufferedReader(jsonlPath);
+            try {
+                String line;
+                JsonFactory factory = new JsonFactory();
+                ObjectMapper objectMapper = new ObjectMapper();
+                while ((line = br.readLine()) != null) {
+                    JsonParser parser = factory.createParser(line);
+                    JsonNode jsonNode = objectMapper.readTree(parser);
+
+                    if (jsonNode.has("object") && jsonNode.has("disposition")) {
+                        String value = jsonNode.get("object").asText();
+                        String disposition = jsonNode.get("disposition").asText();
+                         System.out.println(String.format("SASHANKvalue:%s, disposition:%s", value, disposition));
+                        logger.error(String.format("SASHANKvalue:%s, disposition:%s", value, disposition));
+                    }
+                }
+            } finally {
+                br.close();
+            }
+        } catch (Exception e) {
+            logger.error(e);
         }
     }
 

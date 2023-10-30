@@ -4,6 +4,10 @@
  */
 package org.opensearch.securityanalytics.threatIntel;
 
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.logging.log4j.LogManager;
@@ -15,6 +19,8 @@ import org.opensearch.securityanalytics.threatIntel.common.Constants;
 import org.opensearch.securityanalytics.threatIntel.common.TIFMetadata;
 
 import java.io.BufferedReader;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
@@ -40,11 +46,16 @@ public class ThreatIntelFeedParser {
                 URL url = new URL(tifMetadata.getUrl());
                 URLConnection connection = url.openConnection();
                 connection.addRequestProperty(Constants.USER_AGENT_KEY, Constants.USER_AGENT_VALUE);
-                return new CSVParser(new BufferedReader(new InputStreamReader(connection.getInputStream())), CSVFormat.RFC4180);
+                BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+                return new CSVParser(reader, CSVFormat.RFC4180);
             } catch (IOException e) {
-                log.error("Exception: failed to read threat intel feed data from {}",tifMetadata.getUrl(), e);
+                log.error("Exception: failed to read threat intel feed data from {}", tifMetadata.getUrl(), e);
                 throw new OpenSearchException("failed to read threat intel feed data from {}", tifMetadata.getUrl(), e);
             }
         });
+    }
+
+    public static void main(String[] args) throws IOException {
+       
     }
 }

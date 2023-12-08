@@ -628,6 +628,18 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
 
         Response deleteResponse = makeRequest(client(), "DELETE", SecurityAnalyticsPlugin.RULE_BASE_URI + "/" + ruleId, Collections.emptyMap(), null);
         Assert.assertEquals("Delete rule successful", RestStatus.OK, restStatus(deleteResponse));
+
+       String request = "{\n" +
+               "  \"query\": {\n" +
+               "        \"match_all\": {}\n" +
+               "    }\n" +
+               "}";
+       Response searchResponse = makeRequest(client(), "POST", String.format(Locale.getDefault(), "%s/_search", SecurityAnalyticsPlugin.RULE_BASE_URI), Collections.singletonMap("pre_packaged", "false"),
+               new StringEntity(request), new BasicHeader("Content-Type", "application/json"));
+       Assert.assertEquals("Searching rules failed", RestStatus.OK, restStatus(searchResponse));
+
+       Map<String, Object> resBody = asMap(searchResponse);
+       Assert.assertEquals(0, ((Map<String, Object>) ((Map<String, Object>) resBody.get("hits")).get("total")).get("value"));
         
         deleteResponse = makeRequest(client(), "DELETE", SecurityAnalyticsPlugin.CUSTOM_LOG_TYPE_URI + "/" + logTypeId, Collections.emptyMap(), new StringEntity(""));
         Assert.assertEquals("Delete custom log type successful", RestStatus.OK, restStatus(deleteResponse));

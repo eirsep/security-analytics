@@ -7,6 +7,7 @@ package org.opensearch.securityanalytics.transport;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.OpenSearchStatusException;
+import org.opensearch.commons.authuser.User;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.action.ActionRunnable;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
@@ -38,7 +39,7 @@ import org.opensearch.transport.TransportService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class TransportSearchRuleAction extends HandledTransportAction<SearchRuleRequest, SearchResponse> {
+public class TransportSearchRuleAction extends HandledTransportAction<SearchRuleRequest, SearchResponse> implements SecureTransportAction{
 
     private static final Logger log = LogManager.getLogger(TransportSearchRuleAction.class);
 
@@ -52,6 +53,9 @@ public class TransportSearchRuleAction extends HandledTransportAction<SearchRule
     private final Settings settings;
 
     private volatile TimeValue indexTimeout;
+    private volatile Boolean filterByEnabled;
+
+
 
     @Inject
     public TransportSearchRuleAction(TransportService transportService, Client client, ActionFilters actionFilters, ClusterService clusterService, RuleIndices ruleIndices, Settings settings) {
@@ -63,11 +67,14 @@ public class TransportSearchRuleAction extends HandledTransportAction<SearchRule
         this.settings = settings;
 
         this.indexTimeout = SecurityAnalyticsSettings.INDEX_TIMEOUT.get(this.settings);
+        this.filterByEnabled = SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES.get(this.settings);
+
+        this.clusterService.getClusterSettings().addSettingsUpdateConsumer(SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES, this::setFilterByEnabled);
     }
 
     @Override
     protected void doExecute(Task task, SearchRuleRequest request, ActionListener<SearchResponse> listener) {
-        AsyncSearchRulesAction asyncAction = new AsyncSearchRulesAction(task, request, listener);
+        AsyncSearchRulesAction asyncAction = new AsyncSearchRulesAction(task, request, listener, this.filterByEnabled, this.threadPool);
         asyncAction.start();
     }
 
@@ -78,16 +85,25 @@ public class TransportSearchRuleAction extends HandledTransportAction<SearchRule
         private final AtomicReference<Object> response;
         private final AtomicBoolean counter = new AtomicBoolean();
         private final Task task;
-
-        AsyncSearchRulesAction(Task task, SearchRuleRequest request, ActionListener<SearchResponse> listener) {
+        private volatile Boolean filterByEnabled;
+        ThreadPool tp;
+        AsyncSearchRulesAction(Task task, SearchRuleRequest request, ActionListener<SearchResponse> listener, Boolean fbe, ThreadPool threadPool) {
             this.task = task;
             this.request = request;
             this.listener = listener;
-
+            this.filterByEnabled = fbe;
             this.response = new AtomicReference<>();
+            this.tp = threadPool;
         }
 
         void start() {
+            User user = readUserFromThreadContext(this.tp);
+
+            if (doFilterForUser(user, this.filterByEnabled)) {
+                // security is enabled and filterby is enabled
+                log.info("Filtering result by: {}", user.getBackendRoles());
+                addFilter(user, request.getSearchRequest().source(), "detector.user.backend_roles.keyword");
+            }
             TransportSearchRuleAction.this.threadPool.getThreadContext().stashContext();
             if (request.isPrepackaged()) {
                 ruleIndices.initPrepackagedRulesIndex(
@@ -242,5 +258,9 @@ public class TransportSearchRuleAction extends HandledTransportAction<SearchRule
                 }
             }));
         }
+    }
+
+    private void setFilterByEnabled(boolean filterByEnabled) {
+        this.filterByEnabled = filterByEnabled;
     }
 }

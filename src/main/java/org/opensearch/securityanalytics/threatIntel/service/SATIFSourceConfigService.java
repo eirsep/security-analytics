@@ -11,12 +11,13 @@ import org.opensearch.OpenSearchStatusException;
 import org.opensearch.ResourceAlreadyExistsException;
 import org.opensearch.action.StepListener;
 import org.opensearch.action.admin.indices.create.CreateIndexRequest;
-import org.opensearch.action.admin.indices.create.CreateIndexResponse;
 import org.opensearch.action.delete.DeleteRequest;
 import org.opensearch.action.delete.DeleteResponse;
 import org.opensearch.action.get.GetRequest;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.action.index.IndexResponse;
+import org.opensearch.action.search.SearchRequest;
+import org.opensearch.action.search.SearchResponse;
 import org.opensearch.action.support.WriteRequest;
 import org.opensearch.client.Client;
 import org.opensearch.cluster.service.ClusterService;
@@ -30,12 +31,17 @@ import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.core.xcontent.ToXContent;
 import org.opensearch.core.xcontent.XContentParser;
-import org.opensearch.extensions.AcknowledgedResponse;
+import org.opensearch.index.IndexNotFoundException;
+import org.opensearch.index.query.BoolQueryBuilder;
+import org.opensearch.index.query.QueryBuilder;
+import org.opensearch.index.query.QueryBuilders;
 import org.opensearch.jobscheduler.spi.LockModel;
+import org.opensearch.search.SearchHit;
 import org.opensearch.securityanalytics.SecurityAnalyticsPlugin;
 import org.opensearch.securityanalytics.threatIntel.common.StashedThreadContext;
 import org.opensearch.securityanalytics.threatIntel.common.TIFLockService;
 import org.opensearch.securityanalytics.threatIntel.model.SATIFSourceConfig;
+import org.opensearch.securityanalytics.util.DetectorUtils;
 import org.opensearch.securityanalytics.util.SecurityAnalyticsException;
 import org.opensearch.threadpool.ThreadPool;
 
@@ -44,10 +50,17 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.INDEX_TIMEOUT;
+import static org.opensearch.securityanalytics.threatIntel.common.TIFJobState.AVAILABLE;
+import static org.opensearch.securityanalytics.threatIntel.common.TIFJobState.REFRESHING;
+import static org.opensearch.securityanalytics.threatIntel.model.SATIFSourceConfig.STATE_FIELD;
 
 /**
  * CRUD for threat intel feeds source config object
@@ -260,5 +273,70 @@ public class SATIFSourceConfigService {
                     actionListener.onFailure(e);
                 }
         ));
+    }
+
+    public void getIocTypeToIndices(ActionListener<Map<String, List<String>>> listener) {
+        SearchRequest searchRequest = new SearchRequest(SecurityAnalyticsPlugin.JOB_INDEX_NAME);
+        BoolQueryBuilder queryBuilder = QueryBuilders.boolQuery()
+                .filter(QueryBuilders.termsQuery(STATE_FIELD, List.of(REFRESHING.toString(), AVAILABLE.toString())));
+        searchRequest.source().query(queryBuilder);
+        searchTIFSourceConfigs(searchRequest, ActionListener.wrap(
+                searchResponse -> {
+                    Map<String, List<String>> cumulativeIocTypeToIndices = new HashMap<>();
+                    for (SearchHit hit : searchResponse.getHits().getHits()) {
+                        XContentParser xcp = XContentType.JSON.xContent().createParser(
+                                xContentRegistry,
+                                LoggingDeprecationHandler.INSTANCE, hit.getSourceAsString());
+                        SATIFSourceConfig config = SATIFSourceConfig.parse(xcp, hit.getId(), hit.getVersion());
+                        /*
+                        Todo DefaultIOCStoreConfig iocStoreConfig = (DefaultIOCStoreConfig) SaTifSourceConfigDto.getIocStoreConfig();
+                            Map<String, List<String>> iocTypeToIndices = iocStoreConfig.getIocMapStore()
+                         */
+                        //todo replace with above. why is it not type based casting and only default. need a switch case util method?
+                        Map<String, List<String>> iocTypeToIndices = new HashMap<>();
+                        for (String iocType : iocTypeToIndices.keySet()) {
+                            if (iocTypeToIndices.get(iocType).isEmpty())
+                                continue;
+                            List<String> strings = cumulativeIocTypeToIndices.computeIfAbsent(iocType, k -> new ArrayList<>());
+                            strings.addAll(iocTypeToIndices.get(iocType));
+                        }
+                    }
+                    listener.onResponse(cumulativeIocTypeToIndices);
+                },
+                e -> {
+                    log.error("Failed to fetch ioc indices", e);
+                    listener.onFailure(e);
+                }
+        ));
+    }
+
+    public void searchTIFSourceConfigs(
+            final SearchRequest searchRequest,
+            final ActionListener<SearchResponse> actionListener
+    ) {
+        try {
+            client.search(searchRequest, ActionListener.wrap(
+                    searchResponse -> {
+                        if (searchResponse.isTimedOut()) {
+                            actionListener.onFailure(SecurityAnalyticsException.wrap(new OpenSearchStatusException("Search threat intel source configs request timed out", RestStatus.REQUEST_TIMEOUT)));
+                            return;
+                        }
+
+                        log.debug("Fetched all threat intel source configs successfully.");
+                        actionListener.onResponse(searchResponse);
+                    }, e -> {
+                        if(e instanceof IndexNotFoundException) {
+                            log.info("TIF config Index not created. Returning empty search response");
+                            actionListener.onResponse(DetectorUtils.getEmptySearchResponse());
+                            return;
+                        }
+                        log.error("Failed to fetch all threat intel source configs", e);
+                        actionListener.onFailure(e);
+                    })
+            );
+        } catch (Exception e) {
+            log.error("Failed to fetch all threat intel source configs ", e);
+            actionListener.onFailure(e);
+        }
     }
 }

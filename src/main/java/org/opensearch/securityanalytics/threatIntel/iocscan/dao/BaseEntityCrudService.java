@@ -118,7 +118,7 @@ public abstract class BaseEntityCrudService<Entity extends BaseEntity> {
                                 client.bulk(req, groupedListener); //todo why stash context here?
                             } catch (Exception e) {
                                 log.error(
-                                        () -> new ParameterizedMessage("Failed to bulk save {} {}.", req.batchSize(), getEntityName()),
+                                        () -> new ParameterizedMessage("Failed to bulk save {} {}.", batchSize, getEntityName()),
                                         e);
                             }
                         }
@@ -169,7 +169,7 @@ public abstract class BaseEntityCrudService<Entity extends BaseEntity> {
                             for (BulkResponse response : bulkResponses) {
                                 BulkRequest request = bulkRequestList.get(idx);
                                 if (response.hasFailures()) {
-                                    log.error("Failed to bulk index {} {}s. Failure: {}", request.batchSize(), getEntityName(), response.buildFailureMessage());
+                                    log.error("Failed to bulk index {} {}s. Failure: {}", batchSize, getEntityName(), response.buildFailureMessage());
                                 }
                             }
                             actionListener.onResponse(null);
@@ -179,7 +179,7 @@ public abstract class BaseEntityCrudService<Entity extends BaseEntity> {
                                 client.bulk(req, groupedListener); //todo why stash context here?
                             } catch (Exception e) {
                                 log.error(
-                                        () -> new ParameterizedMessage("Failed to bulk save {} {}.", req.batchSize(), getEntityName()),
+                                        () -> new ParameterizedMessage("Failed to bulk save {} {}.", batchSize, getEntityName()),
                                         e);
                             }
                         }

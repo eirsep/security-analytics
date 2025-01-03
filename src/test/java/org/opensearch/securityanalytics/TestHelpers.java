@@ -2929,7 +2929,8 @@ public class TestHelpers {
                 lastRefreshedUser,
                 isEnabled,
                 iocTypes,
-                true
+                true,
+                null
         );
     }
 
@@ -3019,7 +3020,8 @@ public class TestHelpers {
                 isEnabled,
                 iocStoreConfig,
                 iocTypes,
-                true
+                true,
+                null
         );
     }
 }

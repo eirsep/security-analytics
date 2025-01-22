@@ -7,7 +7,7 @@ import org.opensearch.gradle.test.RestIntegTestTask
 
 buildscript {
     ext {
-        opensearch_version = System.getProperty("opensearch.version", "2.15.1-SNAPSHOT")
+        opensearch_version = System.getProperty("opensearch.version", "2.15.0-SNAPSHOT")
         isSnapshot = "true" == System.getProperty("build.snapshot", "true")
         buildVersionQualifier = System.getProperty("build.version_qualifier", "")
         version_tokens = opensearch_version.tokenize('-')
@@ -167,7 +167,7 @@ dependencies {
     implementation group: 'org.apache.commons', name: 'commons-lang3', version: "${versions.commonslang}"
     compileOnly "org.antlr:antlr4-runtime:4.10.1"
     compileOnly "com.cronutils:cron-utils:9.1.7"
-    compileOnly "org.opensearch:common-utils:${common_utils_version}@jar"
+    compileOnly files("/Users/snistala/Documents/opensearch/common-utils/build/libs/common-utils-2.15.0.0-SNAPSHOT.jar")
     compileOnly "org.opensearch.client:opensearch-rest-client:${opensearch_version}"
     compileOnly "org.jetbrains.kotlin:kotlin-stdlib:${kotlin_version}"
     compileOnly "org.opensearch:opensearch-job-scheduler-spi:${opensearch_build}"
